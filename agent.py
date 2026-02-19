@@ -46,7 +46,7 @@ class GeminiService:
         grounding_metadata = self._extract_grounding_metadata(response)
         
         # Check for hallucination (answer without grounding)
-        is_hallucinated = self._detect_hallucination(response, grounding_metadata)
+        is_hallucinated, detection_reason = self._detect_hallucination(response, grounding_metadata)
         
         # Check for stale knowledge
         is_stale = self._detect_stale_knowledge(grounding_metadata)
@@ -60,7 +60,8 @@ class GeminiService:
             prompt=prompt,
             response_text=response.text,
             grounding_metadata=grounding_metadata,
-            is_hallucinated=is_hallucinated
+            is_hallucinated=is_hallucinated,
+            detection_reason=detection_reason
         )
         
         # Log to database
@@ -70,6 +71,7 @@ class GeminiService:
             "response": response.text,
             "grounding_metadata": grounding_metadata,
             "is_hallucinated": is_hallucinated,
+            "detection_reason": detection_reason,
             "is_stale": is_stale,
             "sources_count": len(grounding_metadata.get("grounding_chunks", [])),
             "confidence_score": confidence_score,
@@ -126,13 +128,21 @@ class GeminiService:
         
         return metadata
     
-    def _detect_hallucination(self, response, grounding_metadata: Dict[str, Any]) -> bool:
+    def _detect_hallucination(self, response, grounding_metadata: Dict[str, Any]) -> tuple[bool, Optional[str]]:
         """
         Detect if the model hallucinated by checking:
         1. Ghost citations (cites sources that don't exist)
         2. Empty Receipt Check (lists/bullets with no grounding)
         3. Ungrounded claims (long response with no grounding supports)
         4. Missing grounding chunks for substantive answers
+        5. Weak grounding (few sources for complex claims)
+        6. Suspicious certainty markers
+        7. Named system detection
+        
+        Returns:
+            tuple: (is_hallucinated, detection_reason)
+                - is_hallucinated: bool indicating if hallucination detected
+                - detection_reason: Optional[str] with snake_case reason or None
         """
         response_text = response.text
         chunks = grounding_metadata.get('grounding_chunks', [])
@@ -146,7 +156,7 @@ class GeminiService:
             max_citation = max(int(c) for c in found_citations)
             if max_citation > source_count:
                 print(f"⚠️ Hallucination detected: Ghost citation [{max_citation}] (only {source_count} sources exist)")
-                return True  # Hallucination: Cited a source that doesn't exist
+                return True, "ghost_citation"  # Hallucination: Cited a source that doesn't exist
         
         # Check 2: The "Empty Receipt" Check - lists/bullets with no sources
         # If model gives a list (bullets or numbered) but search returned 0 chunks
@@ -156,12 +166,12 @@ class GeminiService:
         
         if source_count == 0 and has_list:
             print(f"⚠️ Hallucination detected: Listed items with zero grounding chunks (Empty Receipt)")
-            return True
+            return True, "empty_receipt"
         
         # Check 3: Ungrounded Claims - long response with no grounding supports
         if len(response_text) > 200 and not supports and source_count == 0:
             print(f"⚠️ Hallucination detected: Long response ({len(response_text)} chars) with no grounding supports")
-            return True
+            return True, "ungrounded_claim"
         
         # Check 4: Basic check - has substantive answer but no sources at all
         has_answer = response_text and len(response_text) > 50
@@ -169,9 +179,44 @@ class GeminiService:
         
         if has_answer and not has_grounding:
             print(f"⚠️ Hallucination detected: Substantive answer with no grounding chunks")
-            return True
+            return True, "missing_grounding"
         
-        return False
+        # Check 5: Weak grounding for specific/technical claims
+        # If response mentions research papers, specific architectures, or technical details
+        # but has very few sources (< 6), likely hallucinating with generic sources
+        technical_markers = ['paper', 'research', 'study', 'published', 'architecture', 
+                           'framework', 'benchmark', 'technical report', 'whitepaper',
+                           'proposed by', 'developed by', 'researchers at', 'methodology']
+        
+        has_technical_claim = any(marker in response_text.lower() for marker in technical_markers)
+        
+        if has_technical_claim and source_count < 6 and len(response_text) > 100:
+            print(f"⚠️ Hallucination detected: Technical claims with only {source_count} sources (needs 6+)")
+            return True, "weak_technical_grounding"
+        
+        # Check 6: Suspicious certainty with weak grounding
+        # If model is very certain but has weak support
+        certainty_markers = ['specifically', 'exactly', 'precisely', 'according to', 
+                           'the paper states', 'the study found', 'researchers discovered',
+                           'researchers proposed', 'the research shows']
+        
+        has_certainty = any(marker in response_text.lower() for marker in certainty_markers)
+        
+        if has_certainty and source_count < 3:
+            print(f"⚠️ Hallucination detected: High certainty language with only {source_count} sources")
+            return True, "suspicious_certainty"
+        
+        # Check 7: Suspiciously detailed claims about specific named systems/models
+        # If response describes specific technical details about a named system
+        # but has moderate source count (6-12), might be generic results not specific paper
+        specific_system_pattern = r'(?:the|a)\s+\w+(?:Sync|Path|Bridge|Mesh|Probe|Mind|Chain|Flux|Graph|Weave|Cast|Net|Flow|Link)\b'
+        has_specific_system = re.search(specific_system_pattern, response_text, re.IGNORECASE)
+        
+        if has_specific_system and 1 <= source_count <= 12 and len(response_text) > 150:
+            print(f"⚠️ Hallucination detected: Specific named system with {source_count} generic sources")
+            return True, "named_system_detection"
+        
+        return False, None
     
     def _calculate_confidence_score(self, grounding_metadata: Dict[str, Any]) -> float:
         """
