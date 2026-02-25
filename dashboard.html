@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Sentinel - Hallucination Detection Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%);
+            color: #00ff00;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            padding: 20px 0;
+            border-bottom: 2px solid #00ff00;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            text-shadow: 0 0 10px #00ff00;
+            letter-spacing: 2px;
+        }
+
+        .subtitle {
+            color: #00cc00;
+            margin-top: 5px;
+            font-size: 0.9rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: rgba(0, 255, 0, 0.05);
+            border: 1px solid #00ff00;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.1);
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: #00cc00;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            text-shadow: 0 0 5px #00ff00;
+        }
+
+        .stat-value.error {
+            color: #ff0000;
+            text-shadow: 0 0 5px #ff0000;
+        }
+
+        .stat-value.success {
+            color: #00ff00;
+            text-shadow: 0 0 5px #00ff00;
+        }
+
+        .section {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #00ff00;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+
+        .section-title {
+            font-size: 1.3rem;
+            margin-bottom: 15px;
+            color: #00ff00;
+            border-bottom: 1px solid #00ff00;
+            padding-bottom: 10px;
+        }
+
+        .trace-log {
+            max-height: 400px;
+            overflow-y: auto;
+            font-size: 0.85rem;
+        }
+
+        .trace-item {
+            padding: 8px;
+            margin: 5px 0;
+            border-left: 3px solid;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        .trace-item.hallucinated {
+            border-left-color: #ff0000;
+            background: rgba(255, 0, 0, 0.1);
+        }
+
+        .trace-item.grounded {
+            border-left-color: #00ff00;
+            background: rgba(0, 255, 0, 0.05);
+        }
+
+        .trace-timestamp {
+            color: #808080;
+            font-size: 0.75rem;
+        }
+
+        .trace-session {
+            color: #00cccc;
+            font-size: 0.8rem;
+        }
+
+        .bar-chart {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .bar-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .bar-label {
+            width: 150px;
+            font-size: 0.85rem;
+        }
+
+        .bar-track {
+            flex: 1;
+            height: 25px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #00ff00;
+            position: relative;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff00 0%, #00cc00 100%);
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 8px;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+
+        .try-it-form {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        label {
+            color: #00cc00;
+            font-size: 0.9rem;
+        }
+
+        input, textarea {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #00ff00;
+            color: #00ff00;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        input:focus, textarea:focus {
+            outline: none;
+            box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        button {
+            background: #00ff00;
+            color: #000;
+            border: none;
+            padding: 12px 24px;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: #00cc00;
+            box-shadow: 0 0 20px rgba(0, 255, 0, 0.5);
+        }
+
+        button:disabled {
+            background: #333;
+            color: #666;
+            cursor: not-allowed;
+        }
+
+        .response-box {
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid #00ff00;
+            padding: 15px;
+            margin-top: 15px;
+            border-radius: 4px;
+            display: none;
+        }
+
+        .response-box.show {
+            display: block;
+        }
+
+        .response-status {
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 4px;
+        }
+
+        .response-status.hallucinated {
+            background: rgba(255, 0, 0, 0.2);
+            color: #ff0000;
+            border-left: 4px solid #ff0000;
+        }
+
+        .response-status.grounded {
+            background: rgba(0, 255, 0, 0.2);
+            color: #00ff00;
+            border-left: 4px solid #00ff00;
+        }
+
+        .response-text {
+            color: #cccccc;
+            line-height: 1.6;
+            margin-bottom: 10px;
+        }
+
+        .response-meta {
+            display: flex;
+            gap: 20px;
+            font-size: 0.8rem;
+            color: #808080;
+            margin-top: 10px;
+            border-top: 1px solid #333;
+            padding-top: 10px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #00cc00;
+        }
+
+        .blink {
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 50%, 100% { opacity: 1; }
+            25%, 75% { opacity: 0.5; }
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+
+        .status-indicator.online {
+            background: #00ff00;
+            box-shadow: 0 0 5px #00ff00;
+        }
+
+        .status-indicator.offline {
+            background: #ff0000;
+            box-shadow: 0 0 5px #ff0000;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.5);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #00ff00;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #00cc00;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>⚡ LLM SENTINEL ⚡</h1>
+            <div class="subtitle">
+                <span class="status-indicator online"></span>
+                Hallucination Detection & Observability Platform
+            </div>
+        </header>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-label">TOTAL TRACES</div>
+                <div class="stat-value success" id="total-traces">--</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">HALLUCINATIONS DETECTED</div>
+                <div class="stat-value error" id="hallucinated-count">--</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">HALLUCINATION RATE</div>
+                <div class="stat-value error" id="hallucination-rate">--%</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">UNIQUE SESSIONS</div>
+                <div class="stat-value success" id="unique-sessions">--</div>
+            </div>
+        </div>
+
+        <!-- Category Accuracy -->
+        <div class="section">
+            <div class="section-title">📊 EVAL CATEGORY ACCURACY</div>
+            <div class="bar-chart" id="category-chart">
+                <div class="loading blink">Loading evaluation data...</div>
+            </div>
+        </div>
+
+        <!-- Recent Traces -->
+        <div class="section">
+            <div class="section-title">📡 LIVE TRACE LOG (Last 20)</div>
+            <div class="trace-log" id="trace-log">
+                <div class="loading blink">Loading traces...</div>
+            </div>
+        </div>
+
+        <!-- Try It Form -->
+        <div class="section">
+            <div class="section-title">🔬 TRY IT LIVE</div>
+            <form class="try-it-form" id="try-it-form">
+                <div class="form-group">
+                    <label for="test-prompt">Enter a prompt to test hallucination detection:</label>
+                    <textarea id="test-prompt" placeholder="e.g., Explain the NeuroSync architecture from the 2025 NeurIPS paper..."></textarea>
+                </div>
+                <button type="submit" id="submit-btn">RUN DETECTION</button>
+            </form>
+            <div class="response-box" id="response-box">
+                <div class="response-status" id="response-status"></div>
+                <div class="response-text" id="response-text"></div>
+                <div class="response-meta">
+                    <span>Sources: <strong id="sources-count">-</strong></span>
+                    <span>Confidence: <strong id="confidence-score">-</strong></span>
+                    <span>Stale: <strong id="is-stale">-</strong></span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+        let refreshInterval;
+
+        // Fetch stats from API
+        async function fetchStats() {
+            try {
+                const response = await fetch(`${API_BASE}/stats`);
+                const data = await response.json();
+                
+                document.getElementById('total-traces').textContent = data.total_traces || 0;
+                document.getElementById('hallucinated-count').textContent = data.hallucinated_count || 0;
+                document.getElementById('hallucination-rate').textContent = `${data.hallucination_rate || 0}%`;
+                document.getElementById('unique-sessions').textContent = data.unique_sessions || 0;
+                
+                // Update trace log
+                const traceLog = document.getElementById('trace-log');
+                if (data.recent_traces && data.recent_traces.length > 0) {
+                    traceLog.innerHTML = data.recent_traces.map(trace => {
+                        const status = trace.is_hallucinated ? 'hallucinated' : 'grounded';
+                        const statusText = trace.is_hallucinated ? '❌ HALLUCINATED' : '✅ GROUNDED';
+                        return `
+                            <div class="trace-item ${status}">
+                                <div><strong>${statusText}</strong></div>
+                                <div class="trace-session">Session: ${trace.session_id}</div>
+                                <div class="trace-timestamp">${new Date(trace.timestamp).toLocaleString()}</div>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    traceLog.innerHTML = '<div class="loading">No traces yet</div>';
+                }
+            } catch (error) {
+                console.error('Error fetching stats:', error);
+                document.querySelector('.status-indicator').classList.remove('online');
+                document.querySelector('.status-indicator').classList.add('offline');
+            }
+        }
+
+        // Fetch eval results for category chart
+        async function fetchEvalResults() {
+            try {
+                const response = await fetch('/eval_results.json');
+                const data = await response.json();
+                
+                const categoryChart = document.getElementById('category-chart');
+                
+                if (data.results && Array.isArray(data.results)) {
+                    // Calculate category accuracy from results
+                    const categories = {};
+                    data.results.forEach(result => {
+                        const cat = result.category;
+                        if (!categories[cat]) {
+                            categories[cat] = { correct: 0, total: 0 };
+                        }
+                        categories[cat].total++;
+                        if (result.correct) categories[cat].correct++;
+                    });
+                    
+                    categoryChart.innerHTML = Object.entries(categories)
+                        .sort((a, b) => {
+                            const accA = (a[1].correct / a[1].total) * 100;
+                            const accB = (b[1].correct / b[1].total) * 100;
+                            return accB - accA;
+                        })
+                        .map(([cat, stats]) => {
+                            const accuracy = ((stats.correct / stats.total) * 100).toFixed(1);
+                            return `
+                                <div class="bar-item">
+                                    <div class="bar-label">${cat}</div>
+                                    <div class="bar-track">
+                                        <div class="bar-fill" style="width: ${accuracy}%">${accuracy}%</div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('');
+                } else {
+                    categoryChart.innerHTML = '<div class="loading">No evaluation data available</div>';
+                }
+            } catch (error) {
+                console.error('Error fetching eval results:', error);
+                document.getElementById('category-chart').innerHTML = '<div class="loading">Evaluation data not found</div>';
+            }
+        }
+
+        // Handle form submission
+        document.getElementById('try-it-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const prompt = document.getElementById('test-prompt').value.trim();
+            if (!prompt) return;
+            
+            const submitBtn = document.getElementById('submit-btn');
+            const responseBox = document.getElementById('response-box');
+            
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'ANALYZING...';
+            responseBox.classList.remove('show');
+            
+            try {
+                const response = await fetch(`${API_BASE}/query`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        prompt: prompt,
+                        session_id: `dashboard_${Date.now()}`
+                    })
+                });
+                
+                const data = await response.json();
+                
+                // Show response
+                const statusEl = document.getElementById('response-status');
+                const textEl = document.getElementById('response-text');
+                
+                if (data.is_hallucinated) {
+                    statusEl.className = 'response-status hallucinated';
+                    statusEl.innerHTML = '❌ <strong>HALLUCINATION DETECTED</strong>';
+                } else {
+                    statusEl.className = 'response-status grounded';
+                    statusEl.innerHTML = '✅ <strong>RESPONSE GROUNDED</strong>';
+                }
+                
+                textEl.textContent = data.response || 'No response';
+                document.getElementById('sources-count').textContent = data.sources_count || 0;
+                document.getElementById('confidence-score').textContent = (data.confidence_score || 0).toFixed(2);
+                document.getElementById('is-stale').textContent = data.is_stale ? 'Yes' : 'No';
+                
+                responseBox.classList.add('show');
+                
+                // Refresh stats to show new trace
+                setTimeout(fetchStats, 1000);
+                
+            } catch (error) {
+                alert('Error: ' + error.message);
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'RUN DETECTION';
+            }
+        });
+
+        // Initial load
+        fetchStats();
+        fetchEvalResults();
+        
+        // Auto-refresh every 30 seconds
+        refreshInterval = setInterval(fetchStats, 30000);
+    </script>
+</body>
+</html>

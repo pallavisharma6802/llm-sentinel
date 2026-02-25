@@ -20,11 +20,12 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environment
+# Virtual Environments
 venv/
 env/
 ENV/
 .venv
+airflow-venv/
 
 # IDE
 .vscode/
@@ -32,9 +33,8 @@ ENV/
 *.swp
 *.swo
 *~
-.DS_Store
 
-# Environment variables
+# Environment Variables
 .env
 .env.local
 .env.*.local
@@ -48,29 +48,39 @@ ENV/
 *.log
 logs/
 
+# Airflow Runtime
+airflow/logs/
+airflow/airflow.db
+airflow/airflow.cfg
+airflow/*.pid
+airflow/*.err
+airflow/*.out
+airflow/webserver_config.py
+airflow/__pycache__/
+airflow.db
+airflow.cfg
+dags/__pycache__/
+
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
 
-# Jupyter Notebook
+# Jupyter
 .ipynb_checkpoints
-
-# Terraform
-*.tfstate
-*.tfstate.*
-.terraform/
 
 # Docker
 docker-compose.override.yml
 
-# MacOS
+# OS
 .DS_Store
 .AppleDouble
 .LSOverride
 
-# Airflow
-airflow.db
-airflow.cfg
-logs/
-dags/__pycache__/
+# Build Plans (completed)
+*_BUILD_PLAN.md
+
+# Setup Scripts (Docker handles this)
+setup_*.sh
+init_*.sh
+start.sh
