@@ -21,7 +21,8 @@ COPY agent.py .
 COPY database.py .
 COPY dashboard.html .
 COPY eval_results.json .
-COPY .env .
+# NOTE: .env is intentionally NOT copied into the image.
+# Inject secrets at runtime via environment variables or Docker secrets.
 
 # Expose port
 EXPOSE 8000

@@ -7,11 +7,11 @@ from sqlalchemy import Index, text
 class AgentTrace(SQLModel, table=True):
     """
     Stores the complete trace of an agent's reasoning process.
-    The grounding_metadata field uses JSONB for efficient querying of nested sources.
-    
-    Deduplication Strategy:
-    - Uses a hash index on response_text to prevent duplicate job listings
-    - For the job hunter use case, identical responses indicate duplicate jobs
+    The grounding_metadata field uses JSON for storing nested source data.
+
+    Deduplication: A unique hash index on response_text silently drops
+    identical responses so the caller receives {"duplicate": true} instead
+    of an error.
     """
     __table_args__ = (
         Index('idx_response_hash', text('md5(response_text)'), unique=True),

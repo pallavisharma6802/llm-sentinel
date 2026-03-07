@@ -10,8 +10,10 @@ load_dotenv()
 # Using the asyncpg driver for modern async PostgreSQL connections
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://user:pass@localhost/sentinel_db")
 
-# Creating async engine 
 engine = create_async_engine(DATABASE_URL, echo=True)
+
+# Session factory created once at module level (not per-request)
+async_session_factory = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
 async def init_db():
@@ -20,6 +22,5 @@ async def init_db():
 
 
 async def get_session() -> AsyncSession:
-    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    async with async_session() as session:
+    async with async_session_factory() as session:
         yield session

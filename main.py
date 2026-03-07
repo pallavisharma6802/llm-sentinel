@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import HTMLResponse, FileResponse
+from contextlib import asynccontextmanager
 from pydantic import BaseModel
 from models import AgentTrace
 from database import get_session, init_db
@@ -9,10 +10,21 @@ from agent import GeminiService
 import os
 from typing import Optional
 
-app = FastAPI(title="LLM Sentinel - Hallucination Detection API")
-
-# Initialize Gemini service (will be configured with API key from env)
 gemini_service: Optional[GeminiService] = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize resources on startup and clean up on shutdown."""
+    global gemini_service
+    await init_db()
+    api_key = os.getenv("GEMINI_API_KEY")
+    if api_key:
+        gemini_service = GeminiService(api_key=api_key)
+    yield
+
+
+app = FastAPI(title="LLM Sentinel - Hallucination Detection API", lifespan=lifespan)
 
 
 class QueryRequest(BaseModel):
@@ -20,35 +32,13 @@ class QueryRequest(BaseModel):
     session_id: str = "default"
 
 
-@app.on_event("startup")
-async def on_startup():
-    """
-    Initialize the database on application startup.
-    Creates all tables if they don't exist.
-    """
-    global gemini_service
-    await init_db()
-    
-    # Initialize Gemini service if API key is available
-    api_key = os.getenv("GEMINI_API_KEY")
-    if api_key:
-        gemini_service = GeminiService(api_key=api_key)
-
-
 @app.post("/log-trace")
 async def log_trace(trace: AgentTrace, session: AsyncSession = Depends(get_session)):
     """
     Log an agent's reasoning trace to the database.
-    This endpoint receives the complete trace including:
-    - The original prompt
-    - The model's response
-    - Grounding metadata (sources/URIs)
-    - Hallucination flag
-    
-    Deduplication: If the same response_text is encountered (e.g., duplicate job),
-    it will be silently ignored to prevent duplicate records.
-    
-    Returns the recorded trace ID for reference.
+    Receives the complete trace including prompt, response, grounding metadata,
+    and hallucination flag. Duplicate responses (same content hash) are
+    silently ignored and return {"duplicate": true}.
     """
     try:
         # Ensure timestamp is a datetime object if it comes as a string
@@ -121,11 +111,11 @@ async def get_stats(session: AsyncSession = Depends(get_session)):
 
 
 @app.post("/query")
-async def query_agent(request: QueryRequest):
+async def query_agent(request: QueryRequest, session: AsyncSession = Depends(get_session)):
     """
     Query the Gemini agent with Google Search grounding.
     Automatically logs the trace with grounding metadata.
-    
+
     Returns:
         - response: The agent's answer
         - grounding_metadata: Sources and search queries used
@@ -137,12 +127,13 @@ async def query_agent(request: QueryRequest):
             status_code=503,
             detail="Gemini service not configured. Set GEMINI_API_KEY environment variable."
         )
-    
+
     result = await gemini_service.get_grounded_response(
         prompt=request.prompt,
-        session_id=request.session_id
+        session_id=request.session_id,
+        db=session,
     )
-    
+
     return result
 
 
